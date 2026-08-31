@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>K8s Memory & OOM Simulator</title>
+    <style>
+        :root {
+            --app-color: #3b82f6;
+            --cache-color: rgba(59, 130, 246, 0.4);
+            --limit-color: #ef4444;
+            --bg-color: #f3f4f6;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #111827;
+            color: #f9fafb;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background-color: #1f2937;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            display: flex;
+            gap: 40px;
+            width: 700px;
+        }
+        .controls {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        label {
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+        }
+        input[type="range"] {
+            width: 100%;
+            cursor: pointer;
+        }
+        .visualization {
+            width: 120px;
+            height: 400px;
+            background-color: var(--bg-color);
+            border-radius: 8px;
+            position: relative;
+            border: 2px solid #374151;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+        }
+        .bar-container {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+        }
+        .bar {
+            width: 100%;
+            transition: height 0.3s ease, background-color 0.3s ease;
+        }
+        .cache-bar {
+            background-color: var(--cache-color);
+            border-top: 1px dashed #60a5fa;
+        }
+        .app-bar {
+            background-color: var(--app-color);
+        }
+        .limit-line {
+            position: absolute;
+            left: -10px;
+            right: -10px;
+            height: 3px;
+            background-color: var(--limit-color);
+            z-index: 10;
+            transition: bottom 0.3s ease;
+        }
+        .limit-label {
+            position: absolute;
+            right: -60px;
+            color: var(--limit-color);
+            font-weight: bold;
+            font-size: 12px;
+            transform: translateY(-50%);
+            transition: bottom 0.3s ease;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #374151;
+            text-align: center;
+            font-weight: bold;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .oom-alert {
+            background-color: var(--limit-color);
+            color: white;
+            animation: flash 1s infinite alternate;
+        }
+        .metrics {
+            font-family: monospace;
+            font-size: 14px;
+            color: #9ca3af;
+        }
+        @keyframes flash {
+            from { opacity: 1; }
+            to { opacity: 0.8; background-color: #991b1b; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="controls">
+        <h2>K8s Memory Simulator</h2>
+        <p style="font-size: 14px; color: #9ca3af; margin-top: 0;">Adjust the sliders to see how Linux page cache behaves under Kubernetes memory limits.</p>
+        
+        <div class="control-group">
+            <label><span>Pod Memory Limit</span> <span id="limit-val">1000 MB</span></label>
+            <input type="range" id="limit" min="500" max="2000" step="50" value="1000">
+        </div>
+        
+        <div class="control-group">
+            <label><span>App Active Memory (RSS)</span> <span id="app-val">400 MB</span></label>
+            <input type="range" id="app" min="100" max="2000" step="50" value="400">
+        </div>
+        
+        <div class="control-group">
+            <label><span>File I/O (Page Cache)</span> <span id="cache-val">300 MB</span></label>
+            <input type="range" id="cache" min="0" max="1500" step="50" value="300">
+        </div>
+
+        <div class="status" id="status-box">
+            Status: Running Normal
+        </div>
+        
+        <div class="metrics">
+            <div><strong>Working Set:</strong> <span id="working-set-val">700 MB</span></div>
+            <div style="font-size: 12px; margin-top: 8px;">* Working Set = App Memory + Active Page Cache</div>
+        </div>
+    </div>
+
+    <div class="visualization-wrapper" style="position: relative; padding-right: 60px;">
+        <div class="visualization" id="viz">
+            <div class="limit-line" id="limit-line" style="bottom: 50%;"></div>
+            <div class="limit-label" id="limit-label" style="bottom: 50%;">Limit</div>
+            
+            <div class="bar-container">
+                <div class="bar cache-bar" id="cache-bar" style="height: 15%;"></div>
+                <div class="bar app-bar" id="app-bar" style="height: 20%;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const MAX_GRAPH_MEMORY = 2500; // Represents 100% height of the visualization box
+
+    const limitSlider = document.getElementById('limit');
+    const appSlider = document.getElementById('app');
+    const cacheSlider = document.getElementById('cache');
+
+    const limitLine = document.getElementById('limit-line');
+    const limitLabel = document.getElementById('limit-label');
+    const cacheBar = document.getElementById('cache-bar');
+    const appBar = document.getElementById('app-bar');
+    
+    const limitVal = document.getElementById('limit-val');
+    const appVal = document.getElementById('app-val');
+    const cacheVal = document.getElementById('cache-val');
+    const workingSetVal = document.getElementById('working-set-val');
+    const statusBox = document.getElementById('status-box');
+
+    function updateSimulation() {
+        const limit = parseInt(limitSlider.value);
+        const appMem = parseInt(appSlider.value);
+        const requestedCache = parseInt(cacheSlider.value);
+
+        // --- KERNEL LOGIC SIMULATION ---
+        
+        // 1. If App Memory alone exceeds the Limit, it's an immediate OOMKill.
+        let actualCache = requestedCache;
+        let isOOM = false;
+        let isReclaiming = false;
+
+        if (appMem >= limit) {
+            isOOM = true;
+            actualCache = 0; // Kernel drops cache, but it's not enough to save the app
+        } else if (appMem + requestedCache > limit) {
+            // 2. If App + Cache hits the limit, the Linux Kernel reclaims (shrinks) the page cache.
+            actualCache = limit - appMem;
+            isReclaiming = true;
+        }
+
+        const workingSet = appMem + actualCache;
+
+        // --- UPDATE UI TEXT ---
+        limitVal.innerText = limit + ' MB';
+        appVal.innerText = appMem + ' MB';
+        
+        if (isReclaiming && !isOOM) {
+            cacheVal.innerHTML = `<span style="color:#ef4444; text-decoration:line-through;">${requestedCache} MB</span> (${actualCache} MB)`;
+        } else {
+            cacheVal.innerText = requestedCache + ' MB';
+        }
+        
+        workingSetVal.innerText = workingSet + ' MB';
+
+        if (isOOM) {
+            statusBox.innerText = 'Exit Code 137: OOMKilled';
+            statusBox.className = 'status oom-alert';
+        } else if (isReclaiming) {
+            statusBox.innerText = 'Kernel Reclaiming Page Cache...';
+            statusBox.className = 'status';
+            statusBox.style.backgroundColor = '#d97706';
+        } else {
+            statusBox.innerText = 'Status: Running Normal';
+            statusBox.className = 'status';
+            statusBox.style.backgroundColor = '#374151';
+        }
+
+        // --- UPDATE VISUALIZATION HEIGHTS ---
+        const limitPct = (limit / MAX_GRAPH_MEMORY) * 100;
+        const appPct = (appMem / MAX_GRAPH_MEMORY) * 100;
+        const cachePct = (actualCache / MAX_GRAPH_MEMORY) * 100;
+
+        limitLine.style.bottom = limitPct + '%';
+        limitLabel.style.bottom = limitPct + '%';
+        
+        // If OOM, turn the app bar red to signify the crash
+        if (isOOM) {
+            appBar.style.backgroundColor = '#ef4444';
+        } else {
+            appBar.style.backgroundColor = 'var(--app-color)';
+        }
+
+        appBar.style.height = appPct + '%';
+        cacheBar.style.height = cachePct + '%';
+    }
+
+    // Attach event listeners to all sliders
+    limitSlider.addEventListener('input', updateSimulation);
+    appSlider.addEventListener('input', updateSimulation);
+    cacheSlider.addEventListener('input', updateSimulation);
+
+    // Initial render
+    updateSimulation();
+</script>
+
+</body>
+</html>
