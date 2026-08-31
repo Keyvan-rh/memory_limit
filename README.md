@@ -1,6 +1,8 @@
 # Best Practices for OpenShift Memory Limits
 
-> **Interactive Demo:** [Try the Memory Simulator](https://keyvan-rh.github.io/memory_limit/k8s-simulator.html) to see how page cache, application memory, and container limits interact in real time.
+[![Try the Simulator](https://img.shields.io/badge/Interactive_Demo-Try_the_Memory_Simulator-blue?style=for-the-badge&logo=kubernetes&logoColor=white)](https://keyvan-rh.github.io/memory_limit/k8s-simulator.html)
+
+> Drag the sliders to see how Linux page cache, application memory (RSS), and container limits interact — and when `OOMKilled` actually happens.
 
 ## Why Your Memory Always Looks Full
 

@@ -63,13 +63,13 @@
             justify-content: flex-end;
         }
         .bar-container {
-            width: 100%;
             display: flex;
             flex-direction: column;
             justify-content: flex-end;
             position: absolute;
             bottom: 0;
             width: 100%;
+            height: 100%;
         }
         .bar {
             width: 100%;
@@ -137,17 +137,17 @@
         
         <div class="control-group">
             <label><span>Pod Memory Limit</span> <span id="limit-val">1000 MB</span></label>
-            <input type="range" id="limit" min="500" max="2000" step="50" value="1000">
+            <input type="range" id="limit" min="0" max="2000" step="50" value="1000">
         </div>
-        
+
         <div class="control-group">
             <label><span>App Active Memory (RSS)</span> <span id="app-val">400 MB</span></label>
-            <input type="range" id="app" min="100" max="2000" step="50" value="400">
+            <input type="range" id="app" min="0" max="2000" step="50" value="400">
         </div>
-        
+
         <div class="control-group">
             <label><span>File I/O (Page Cache)</span> <span id="cache-val">300 MB</span></label>
-            <input type="range" id="cache" min="0" max="1500" step="50" value="300">
+            <input type="range" id="cache" min="0" max="2000" step="50" value="300">
         </div>
 
         <div class="status" id="status-box">
@@ -174,7 +174,7 @@
 </div>
 
 <script>
-    const MAX_GRAPH_MEMORY = 2500; // Represents 100% height of the visualization box
+    const MAX_GRAPH_MEMORY = 2000; // Matches the max slider value so scales are consistent
 
     const limitSlider = document.getElementById('limit');
     const appSlider = document.getElementById('app');
