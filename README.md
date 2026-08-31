@@ -1,5 +1,7 @@
 # Best Practices for OpenShift Memory Limits
 
+> **Interactive Demo:** [Try the Memory Simulator](https://keyvan-rh.github.io/memory_limit/k8s-simulator.html) to see how page cache, application memory, and container limits interact in real time.
+
 ## Why Your Memory Always Looks Full
 
 One of the most common points of confusion in OpenShift is what's often called the **"memory leak illusion."**
